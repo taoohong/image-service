@@ -46,8 +46,9 @@ type Opt struct {
 	PrefetchPatterns string
 	OCIRef           bool
 
-	AllPlatforms bool
-	Platforms    string
+	AllPlatforms     bool
+	Platforms        string
+	EncryptRecipient string
 }
 
 func Convert(ctx context.Context, opt Opt) error {

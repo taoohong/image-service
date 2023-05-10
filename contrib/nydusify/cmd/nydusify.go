@@ -409,6 +409,12 @@ func main() {
 					Usage:   "Path to the nydus-image binary, default to search in PATH",
 					EnvVars: []string{"NYDUS_IMAGE"},
 				},
+				&cli.StringFlag{
+					Name:     "encrypt-recipient",
+					Required: false,
+					Usage:    "Recipient to encrypt the nydus bootstrap layer",
+					EnvVars:  []string{"ENCRYPT_RECIPIENT"},
+				},
 			},
 			Action: func(c *cli.Context) error {
 				setupLogLevel(c)
@@ -500,9 +506,10 @@ func main() {
 					ChunkSize:        c.String("chunk-size"),
 					BatchSize:        c.String("batch-size"),
 
-					OCIRef:       c.Bool("oci-ref"),
-					AllPlatforms: c.Bool("all-platforms"),
-					Platforms:    c.String("platform"),
+					OCIRef:           c.Bool("oci-ref"),
+					AllPlatforms:     c.Bool("all-platforms"),
+					Platforms:        c.String("platform"),
+					EncryptRecipient: c.String("encrypt-recipient"),
 				}
 
 				return converter.Convert(context.Background(), opt)
