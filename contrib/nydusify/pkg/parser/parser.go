@@ -9,12 +9,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"strings"
 
+	"github.com/containers/ocicrypt"
 	"github.com/dragonflyoss/image-service/contrib/nydusify/pkg/remote"
 	"github.com/dragonflyoss/image-service/contrib/nydusify/pkg/utils"
 
 	"github.com/containerd/containerd/images"
+	enchelpers "github.com/containers/ocicrypt/helpers"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -66,7 +69,8 @@ func FindNydusBootstrapDesc(manifest *ocispec.Manifest) *ocispec.Descriptor {
 	if len(layers) != 0 {
 		desc := &layers[len(layers)-1]
 		if (desc.MediaType == ocispec.MediaTypeImageLayerGzip ||
-			desc.MediaType == images.MediaTypeDockerSchema2LayerGzip) &&
+			desc.MediaType == images.MediaTypeDockerSchema2LayerGzip ||
+			desc.MediaType == images.MediaTypeImageLayerGzipEncrypted) &&
 			desc.Annotations[utils.LayerAnnotationNydusBootstrap] == "true" {
 			return desc
 		}
@@ -172,6 +176,20 @@ func (parser *Parser) PullNydusBootstrap(ctx context.Context, image *Image) (io.
 		return nil, errors.Wrap(err, "pull Nydus bootstrap layer")
 	}
 	return reader, nil
+}
+
+// Decrypt Nydus bootstrap layer if decryption key is provided.
+func (parser *Parser) DecryptNydusBootstrap(ctx context.Context, reader io.Reader, image *Image, decryptKey string) (io.ReadCloser, error) {
+	bootstrapDesc := FindNydusBootstrapDesc(&image.Manifest)
+	dcc, err := enchelpers.CreateCryptoConfig([]string{}, []string{decryptKey})
+	if err != nil {
+		return nil, errors.Wrap(err, "Create crypto config failed")
+	}
+	resultReader, _, err := ocicrypt.DecryptLayer(dcc.DecryptConfig, reader, *bootstrapDesc, false)
+	if err != nil {
+		return nil, errors.Wrap(err, "Decrypt Nydus bootstrap layer")
+	}
+	return ioutil.NopCloser(resultReader), nil
 }
 
 func (parser *Parser) matchImagePlatform(desc *ocispec.Descriptor) bool {
