@@ -410,10 +410,10 @@ func main() {
 					EnvVars: []string{"NYDUS_IMAGE"},
 				},
 				&cli.StringFlag{
-					Name:     "encrypt-recipient",
-					Required: false,
-					Usage:    "Recipient to encrypt the nydus bootstrap layer",
-					EnvVars:  []string{"ENCRYPT_RECIPIENT"},
+					Name:    "encrypt-recipient",
+					Value:   "",
+					Usage:   "Recipients to encrypt the nydus bootstrap layer, like pgp:<email-address>, jwe:<public-key-file-path>, pkcs7:<x509-file-path>",
+					EnvVars: []string{"ENCRYPT_RECIPIENT"},
 				},
 			},
 			Action: func(c *cli.Context) error {
@@ -594,6 +594,12 @@ func main() {
 					Usage:   "Path to the nydusd binary, default to search in PATH",
 					EnvVars: []string{"NYDUSD"},
 				},
+				&cli.StringFlag{
+					Name:    "decrypt-key",
+					Value:   "",
+					Usage:   "Key to decrypt nydus bootstrap layer.",
+					EnvVars: []string{"DECRYPT_KEY"},
+				},
 			},
 			Action: func(c *cli.Context) error {
 				setupLogLevel(c)
@@ -620,6 +626,7 @@ func main() {
 					BackendType:    backendType,
 					BackendConfig:  backendConfig,
 					ExpectedArch:   arch,
+					DecryptKey:     c.String("decrypt-key"),
 				})
 				if err != nil {
 					return err
