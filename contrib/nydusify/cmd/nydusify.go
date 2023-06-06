@@ -409,11 +409,12 @@ func main() {
 					Usage:   "Path to the nydus-image binary, default to search in PATH",
 					EnvVars: []string{"NYDUS_IMAGE"},
 				},
-				&cli.StringFlag{
-					Name:    "encrypt-recipient",
-					Value:   "",
-					Usage:   "Recipients to encrypt the nydus bootstrap layer, like pgp:<email-address>, jwe:<public-key-file-path>, pkcs7:<x509-file-path>",
-					EnvVars: []string{"ENCRYPT_RECIPIENT"},
+				&cli.StringSliceFlag{
+					Name:  "encrypt-recipients",
+					Value: nil,
+					Usage: "Recipients to encrypt the nydus bootstrap layer, like " +
+						"jwe:<public-key-file-path>, provider:<cmd/gprc>, pgp:<email-address>, pkcs7:<x509-file-path>",
+					EnvVars: []string{"ENCRYPT_RECIPIENTS"},
 				},
 			},
 			Action: func(c *cli.Context) error {
@@ -506,10 +507,10 @@ func main() {
 					ChunkSize:        c.String("chunk-size"),
 					BatchSize:        c.String("batch-size"),
 
-					OCIRef:           c.Bool("oci-ref"),
-					AllPlatforms:     c.Bool("all-platforms"),
-					Platforms:        c.String("platform"),
-					EncryptRecipient: c.String("encrypt-recipient"),
+					OCIRef:            c.Bool("oci-ref"),
+					AllPlatforms:      c.Bool("all-platforms"),
+					Platforms:         c.String("platform"),
+					EncryptRecipients: c.StringSlice("encrypt-recipients"),
 				}
 
 				return converter.Convert(context.Background(), opt)
@@ -594,11 +595,11 @@ func main() {
 					Usage:   "Path to the nydusd binary, default to search in PATH",
 					EnvVars: []string{"NYDUSD"},
 				},
-				&cli.StringFlag{
-					Name:    "decrypt-key",
-					Value:   "",
-					Usage:   "Key to decrypt nydus bootstrap layer.",
-					EnvVars: []string{"DECRYPT_KEY"},
+				&cli.StringSliceFlag{
+					Name:    "decrypt-keys",
+					Value:   nil,
+					Usage:   "Keys to decrypt nydus bootstrap layer.",
+					EnvVars: []string{"DECRYPT_KEYS"},
 				},
 			},
 			Action: func(c *cli.Context) error {
@@ -626,7 +627,7 @@ func main() {
 					BackendType:    backendType,
 					BackendConfig:  backendConfig,
 					ExpectedArch:   arch,
-					DecryptKey:     c.String("decrypt-key"),
+					DecryptKeys:    c.StringSlice("decrypt-keys"),
 				})
 				if err != nil {
 					return err

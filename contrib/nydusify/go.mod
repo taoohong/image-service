@@ -12,7 +12,7 @@ require (
 	github.com/containerd/containerd v1.7.0
 	github.com/containers/ocicrypt v1.1.7
 	github.com/docker/cli v23.0.1+incompatible
-	github.com/docker/distribution v2.8.1+incompatible
+	github.com/docker/distribution v2.8.2+incompatible
 	github.com/goharbor/acceleration-service v0.2.2
 	github.com/google/uuid v1.3.0
 	github.com/hashicorp/go-hclog v1.3.1
@@ -30,9 +30,11 @@ require (
 	lukechampine.com/blake3 v1.1.5
 )
 
-replace github.com/goharbor/acceleration-service => github.com/taoohong/acceleration-service v0.0.0-20230510025430-1729b11f46f9
+// replace github.com/goharbor/acceleration-service => github.com/taoohong/acceleration-service v0.0.0-20230510025430-1729b11f46f9
+replace github.com/goharbor/acceleration-service => ../../../acceleration-service/
 
-replace github.com/containerd/nydus-snapshotter => github.com/taoohong/nydus-snapshotter v0.0.0-20230510024319-c9e2d3c463b9
+// replace github.com/containerd/nydus-snapshotter => github.com/taoohong/nydus-snapshotter v0.0.0-20230510024319-c9e2d3c463b9
+replace github.com/containerd/nydus-snapshotter => ../../../nydus-snapshotter
 
 require (
 	github.com/AdaLogics/go-fuzz-headers v0.0.0-20230106234847-43070de90fa1 // indirect
@@ -58,7 +60,6 @@ require (
 	github.com/containerd/cgroups v1.1.0 // indirect
 	github.com/containerd/continuity v0.3.0 // indirect
 	github.com/containerd/fifo v1.1.0 // indirect
-	github.com/containerd/imgcrypt v1.1.7 // indirect
 	github.com/containerd/nydus-snapshotter v0.7.3 // indirect
 	github.com/containerd/stargz-snapshotter v0.14.3 // indirect
 	github.com/containerd/stargz-snapshotter/estargz v0.14.3 // indirect

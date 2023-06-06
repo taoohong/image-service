@@ -12,12 +12,11 @@ import (
 	"io/ioutil"
 	"strings"
 
+	"github.com/containerd/containerd/images"
 	"github.com/containers/ocicrypt"
+	enchelpers "github.com/containers/ocicrypt/helpers"
 	"github.com/dragonflyoss/image-service/contrib/nydusify/pkg/remote"
 	"github.com/dragonflyoss/image-service/contrib/nydusify/pkg/utils"
-
-	"github.com/containerd/containerd/images"
-	enchelpers "github.com/containers/ocicrypt/helpers"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -179,12 +178,13 @@ func (parser *Parser) PullNydusBootstrap(ctx context.Context, image *Image) (io.
 }
 
 // Decrypt Nydus bootstrap layer if decryption key is provided.
-func (parser *Parser) DecryptNydusBootstrap(ctx context.Context, reader io.Reader, image *Image, decryptKey string) (io.ReadCloser, error) {
+func (parser *Parser) DecryptNydusBootstrap(ctx context.Context, reader io.Reader, image *Image, decryptKeys []string) (io.ReadCloser, error) {
 	bootstrapDesc := FindNydusBootstrapDesc(&image.Manifest)
-	dcc, err := enchelpers.CreateCryptoConfig([]string{}, []string{decryptKey})
+	dcc, err := enchelpers.CreateCryptoConfig([]string{}, decryptKeys)
 	if err != nil {
 		return nil, errors.Wrap(err, "Create crypto config failed")
 	}
+
 	resultReader, _, err := ocicrypt.DecryptLayer(dcc.DecryptConfig, reader, *bootstrapDesc, false)
 	if err != nil {
 		return nil, errors.Wrap(err, "Decrypt Nydus bootstrap layer")
