@@ -9,7 +9,12 @@ use std::fmt::{self, Debug, Formatter};
 use std::io::Error;
 use std::str::FromStr;
 
-use openssl::symm;
+use openssl::{rand, symm};
+
+// The length of the key to do AES-XTS encryption.
+pub const AES_128_XTS_KEY_LENGTH: usize = 32;
+// The length of thd iv (Initialization Vector) to do AES-XTS encryption.
+pub const AES_XTS_IV_LENGTH: usize = 16;
 
 /// Supported cipher algorithms.
 #[repr(u32)]
@@ -303,6 +308,27 @@ impl Cipher {
             Cow::from(buf)
         } else {
             Cow::from(key)
+        }
+    }
+
+    pub fn generate_key_for_aes_xts(size: usize) -> Result<Vec<u8>, Error> {
+        let mut buf = vec![0u8; size];
+        if let Err(e) = rand::rand_bytes(&mut buf) {
+            Err(eother!(format!(
+                "failed to generate key for Aes256Xts, {}",
+                e
+            )))
+        } else {
+            Ok(Self::tweak_key_for_xts(&buf).to_vec())
+        }
+    }
+
+    pub fn generate_random_iv(size: usize) -> Result<Vec<u8>, Error> {
+        let mut buf = vec![0u8; size];
+        if let Err(e) = rand::rand_bytes(&mut buf) {
+            Err(eother!(format!("failed to generate iv, {}", e)))
+        } else {
+            Ok(buf)
         }
     }
 

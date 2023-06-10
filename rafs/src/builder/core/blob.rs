@@ -7,11 +7,11 @@ use std::collections::VecDeque;
 use std::io::Write;
 use std::slice;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Error, Result};
 use nydus_storage::device::BlobFeatures;
 use nydus_storage::meta::{toc, BlobMetaChunkArray};
-use nydus_utils::compress;
 use nydus_utils::digest::{self, DigestHasher, RafsDigest};
+use nydus_utils::{compress, crypt};
 use sha2::digest::Digest;
 
 use super::layout::BlobLayout;
@@ -185,11 +185,25 @@ impl Blob {
         let mut compressor = compress::Algorithm::Zstd;
         let (compressed_data, compressed) = compress::compress(ci_data, compressor)
             .with_context(|| "failed to compress blob chunk info array".to_string())?;
+        let encrypted_data = if blob_ctx.blob_cipher != crypt::Algorithm::None {
+            if let Some(cipher_ctx) = &blob_ctx.cipher_ctx {
+                let (key, iv) = cipher_ctx.get_meta_cipher_context();
+                blob_ctx
+                    .cipher_object
+                    .encrypt(key, Some(iv), &compressed_data)
+                    .context("failed to encrypt meta data")?
+            } else {
+                return Err(Error::msg("the encrypt context can not be none"));
+            }
+        } else {
+            compressed_data
+        };
+
         if !compressed {
             compressor = compress::Algorithm::None;
         }
         let compressed_offset = blob_writer.pos()?;
-        let compressed_size = compressed_data.len() as u64;
+        let compressed_size = encrypted_data.len() as u64;
         let uncompressed_size = ci_data.len() as u64;
 
         header.set_ci_compressor(compressor);
@@ -206,18 +220,31 @@ impl Blob {
             header.set_inlined_chunk_digest(true);
         }
 
-        let header_size = header.as_bytes().len();
         blob_ctx.blob_meta_header = header;
+        let encrypted_header = if blob_ctx.blob_cipher != crypt::Algorithm::None {
+            if let Some(cipher_ctx) = &blob_ctx.cipher_ctx {
+                let (key, iv) = cipher_ctx.get_meta_cipher_context();
+                blob_ctx
+                    .cipher_object
+                    .encrypt(key, Some(iv), &header.as_bytes())
+                    .context("failed to encrypt meta data")?
+            } else {
+                return Err(Error::msg("the encrypt context can not be none"));
+            }
+        } else {
+            std::borrow::Cow::Borrowed(header.as_bytes())
+        };
+        let header_size = encrypted_header.len();
 
         // Write blob meta data and header
-        match compressed_data {
+        match encrypted_data {
             Cow::Owned(v) => blob_ctx.write_data(blob_writer, &v)?,
             Cow::Borrowed(v) => {
                 let buf = v.to_vec();
                 blob_ctx.write_data(blob_writer, &buf)?;
             }
         }
-        blob_ctx.write_data(blob_writer, header.as_bytes())?;
+        blob_ctx.write_data(blob_writer, &encrypted_header)?;
 
         // Write tar header for `blob.meta`.
         if ctx.blob_inline_meta || ctx.features.is_enabled(Feature::BlobToc) {

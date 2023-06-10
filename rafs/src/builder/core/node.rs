@@ -19,8 +19,8 @@ use std::sync::Arc;
 use anyhow::{anyhow, bail, Context, Error, Result};
 use nydus_storage::device::BlobFeatures;
 use nydus_storage::meta::{BlobChunkInfoV2Ondisk, BlobMetaChunkInfo};
-use nydus_utils::compress;
 use nydus_utils::digest::{DigestHasher, RafsDigest};
+use nydus_utils::{compress, crypt};
 use nydus_utils::{div_round_up, event_tracer, root_tracer, try_round_up_4k, ByteSize};
 use sha2::digest::Digest;
 
@@ -443,12 +443,25 @@ impl Node {
     ) -> Result<(u64, u32, bool)> {
         let (compressed, is_compressed) = compress::compress(chunk_data, ctx.compressor)
             .with_context(|| "failed to compress node file".to_string())?;
-        let compressed_size = compressed.len() as u32;
+        let encrypted = if blob_ctx.blob_cipher != crypt::Algorithm::None {
+            if let Some(cipher_ctx) = &blob_ctx.cipher_ctx {
+                let (key, iv) = cipher_ctx.get_meta_cipher_context();
+                blob_ctx
+                    .cipher_object
+                    .encrypt(key, Some(iv), &compressed)
+                    .context("failed to encrypt meta data")?
+            } else {
+                return Err(Error::msg("the encrypt context can not be none"));
+            }
+        } else {
+            compressed
+        };
+        let compressed_size = encrypted.len() as u32;
         let pre_compressed_offset = blob_ctx.current_compressed_offset;
         blob_writer
-            .write_all(&compressed)
+            .write_all(&encrypted)
             .context("failed to write blob")?;
-        blob_ctx.blob_hash.update(&compressed);
+        blob_ctx.blob_hash.update(&encrypted);
         blob_ctx.current_compressed_offset += compressed_size as u64;
         blob_ctx.compressed_blob_size += compressed_size as u64;
 

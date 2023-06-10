@@ -14,15 +14,16 @@ const DEFAULT_CE_KEY: [u8; 32] = [
 ];
 
 /// Struct to provide context information for data encryption/decryption.
-#[derive(Default)]
+#[derive(Default, Debug, Clone)]
 pub struct CipherContext {
     key: Vec<u8>,
+    iv: Vec<u8>,
     convergent_encryption: bool,
 }
 
 impl CipherContext {
     /// Create a new instance of [CipherContext].
-    pub fn new(key: Vec<u8>, convergent_encryption: bool) -> Result<Self> {
+    pub fn new(key: Vec<u8>, iv: Vec<u8>, convergent_encryption: bool) -> Result<Self> {
         if key.len() != 32 {
             return Err(einval!("invalid key length for encryption"));
         } else if key[0..16] == key[16..32] {
@@ -31,6 +32,7 @@ impl CipherContext {
 
         Ok(CipherContext {
             key,
+            iv,
             convergent_encryption,
         })
     }
@@ -54,7 +56,7 @@ impl CipherContext {
     }
 
     /// Get context information for meta data encryption/decryption.
-    pub fn get_meta_cipher_context(&self) -> &[u8] {
-        &self.key
+    pub fn get_meta_cipher_context(&self) -> (&[u8], &[u8]) {
+        (&self.key, &self.iv)
     }
 }

@@ -849,6 +849,9 @@ impl Builder for StargzBuilder {
             ctx.blob_features,
             compress::Algorithm::GZip,
             digest::Algorithm::Sha256,
+            ctx.cipher,
+            Default::default(),
+            None,
         );
         self.generate_nodes(ctx, &mut bootstrap_ctx, &mut blob_ctx, blob_mgr)?;
 

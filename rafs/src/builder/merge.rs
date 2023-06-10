@@ -138,6 +138,7 @@ impl Merger {
 
         let mut fs_version = RafsVersion::V6;
         let mut chunk_size = None;
+        let mut cipher = ctx.cipher;
 
         for (layer_idx, bootstrap_path) in sources.iter().enumerate() {
             let (rs, _) = RafsSuper::load_from_file(bootstrap_path, config_v2.clone(), false)
@@ -147,6 +148,12 @@ impl Merger {
                 .check_compatibility(&rs.meta)?;
             fs_version = RafsVersion::try_from(rs.meta.version)
                 .context("failed to get RAFS version number")?;
+            if layer_idx != 0 && rs.meta.get_cipher() != cipher {
+                bail!("invalid per layer bootstrap, using different encryption algorithms");
+            } else {
+                cipher = rs.meta.get_cipher();
+                ctx.cipher = cipher;
+            }
             ctx.compressor = rs.meta.get_compressor();
             ctx.digester = rs.meta.get_digester();
             ctx.explicit_uidgid = rs.meta.explicit_uidgid();
