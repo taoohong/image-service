@@ -28,6 +28,7 @@ use nydus_utils::{compress, digest};
 
 use crate::backend::{BlobBackend, BlobReader};
 use crate::cache::state::ChunkMap;
+use crate::context::CipherContext;
 use crate::device::{
     BlobChunkInfo, BlobInfo, BlobIoDesc, BlobIoRange, BlobIoVec, BlobObject, BlobPrefetchRequest,
 };
@@ -156,6 +157,9 @@ pub trait BlobCache: Send + Sync {
     /// Cipher object to encrypt/decrypt chunk data.
     fn blob_cipher_object(&self) -> Arc<Cipher>;
 
+    /// Cipher context to encrypt/decrypt chunk data.
+    fn blob_cipher_context(&self) -> Option<CipherContext>;
+
     /// Get message digest algorithm to handle chunks in the blob.
     fn blob_digester(&self) -> digest::Algorithm;
 
@@ -277,8 +281,8 @@ pub trait BlobCache: Send + Sync {
 
     /// Read a whole chunk directly from the storage backend.
     ///
-    /// The fetched chunk data may be compressed or not, which depends on chunk information from
-    /// `chunk`.Moreover, chunk data from backend storage may be validated per user's configuration.
+    /// The fetched chunk data may be compressed or encrypted or not, which depends on chunk information
+    /// from `chunk`. Moreover, chunk data from backend storage may be validated per user's configuration.
     fn read_chunk_from_backend(
         &self,
         chunk: &dyn BlobChunkInfo,
@@ -304,6 +308,26 @@ pub trait BlobCache: Send + Sync {
             if size != raw_buffer.len() {
                 return Err(eio!("storage backend returns less data than requested"));
             }
+            let raw_buffer = if chunk.is_encrypted() {
+                let mut unencryted_buffer = alloc_buf(c_size);
+                self.decrypt_chunk_data(&raw_buffer, unencryted_buffer.as_mut_slice())?;
+                // If origin compressed data is less than 16 bytes, the compressed data
+                // whill be padding to 16 bytes with value (16 - data.len()) when be encrypted.
+                // So before doing decrypt opration before decompress opration, we have to truncate it.
+                if c_size == 16 {
+                    let may_padding_value = unencryted_buffer[15] as usize;
+                    let unencrypted_buffer_size = if may_padding_value < 16 {
+                        unencryted_buffer.len() - may_padding_value
+                    } else {
+                        unencryted_buffer.len()
+                    };
+                    unencryted_buffer[..unencrypted_buffer_size].to_vec()
+                } else {
+                    unencryted_buffer
+                }
+            } else {
+                raw_buffer
+            };
             self.decompress_chunk_data(&raw_buffer, buffer, true)?;
             c_buf = Some(raw_buffer);
         } else {
@@ -378,6 +402,24 @@ pub trait BlobCache: Send + Sync {
 
     fn get_blob_meta_info(&self) -> Result<Option<Arc<BlobCompressionContextInfo>>> {
         Ok(None)
+    }
+
+    /// Decrypt chunk data.
+    fn decrypt_chunk_data(&self, raw_buffer: &[u8], buffer: &mut [u8]) -> Result<()> {
+        let cipher_object = self.blob_cipher_object();
+        let ctx = if self.blob_cipher_context().is_some() {
+            self.blob_cipher_context().unwrap()
+        } else {
+            return Err(eother!("data encrypted but cipher context unsetted"));
+        };
+        let (key, iv) = ctx.get_meta_cipher_context();
+        match cipher_object.decrypt(&key, Some(&iv), &raw_buffer, buffer.len() as usize) {
+            Ok(buf2) => {
+                buffer.copy_from_slice(&buf2);
+            }
+            Err(_) => return Err(eother!("failed to decrypt data from cache file")),
+        }
+        Ok(())
     }
 }
 

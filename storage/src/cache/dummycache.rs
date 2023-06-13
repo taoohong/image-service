@@ -30,6 +30,7 @@ use nydus_utils::{compress, digest};
 use crate::backend::{BlobBackend, BlobReader};
 use crate::cache::state::{ChunkMap, NoopChunkMap};
 use crate::cache::{BlobCache, BlobCacheMgr};
+use crate::context::CipherContext;
 use crate::device::{
     BlobChunkInfo, BlobFeatures, BlobInfo, BlobIoDesc, BlobIoVec, BlobPrefetchRequest,
 };
@@ -70,6 +71,10 @@ impl BlobCache for DummyCache {
 
     fn blob_cipher_object(&self) -> Arc<Cipher> {
         self.blob_info.cipher_object()
+    }
+
+    fn blob_cipher_context(&self) -> Option<CipherContext> {
+        self.blob_info.cipher_context()
     }
 
     fn blob_digester(&self) -> digest::Algorithm {

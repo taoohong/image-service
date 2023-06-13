@@ -33,7 +33,7 @@ use std::ops::{Add, BitAnd, Not};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use nydus_utils::compress;
+use nydus_utils::{compress, crypt};
 use nydus_utils::compress::zlib_random::ZranContext;
 use nydus_utils::digest::{DigestData, RafsDigest};
 use nydus_utils::filemap::FileMapState;
@@ -738,6 +738,32 @@ impl BlobCompressionContextInfo {
                 error!("failed to decompress blob meta data: {}", e);
                 e
             })?;
+            if blob_info.cipher() != crypt::Algorithm::None {
+                if let Some(ctx) = blob_info.cipher_context() {
+                    let (key, iv) = ctx.get_meta_cipher_context();
+                    match blob_info.cipher_object().decrypt(key, Some(iv), &uncompressed, uncompressed.len()) {
+                       Ok(buf) => {
+                            assert_eq!(buf.len(), uncompressed.len());
+                            uncompressed = buf.to_vec()
+                       },
+                       Err(e) => {
+                            return Err(eio!(format!(
+                                "failed to decrypt metadata for blob {} from backend, cipher {}, uncompressed data size {}, {}",
+                                blob_info.blob_id(),
+                                blob_info.cipher(),
+                                uncompressed.len(),
+                                e
+                            )));
+                       }
+                    }
+                } else {
+                    return Err(eio!(format!(
+                        "failed to read metadata for blob {} from backend, cipher {}, cipher context is none",
+                        blob_info.blob_id(),
+                        blob_info.cipher(),
+                    )));
+                }
+            }
             (Cow::Owned(uncompressed), header)
         };
 
@@ -1013,6 +1039,7 @@ impl BlobMetaChunkArray {
         uncompressed_offset: u64,
         uncompressed_size: u32,
         compressed: bool,
+        encrypted: bool,
         is_batch: bool,
         data: u64,
     ) {
@@ -1024,6 +1051,7 @@ impl BlobMetaChunkArray {
                 meta.set_uncompressed_offset(uncompressed_offset);
                 meta.set_uncompressed_size(uncompressed_size);
                 meta.set_compressed(compressed);
+                meta.set_encrypted(encrypted);
                 meta.set_batch(is_batch);
                 meta.set_data(data);
                 v.push(meta);

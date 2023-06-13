@@ -691,6 +691,7 @@ impl BlobContext {
                             chunk.uncompressed_offset(),
                             chunk.uncompressed_size(),
                             chunk.is_compressed(),
+                            chunk.is_encrypted(),
                             chunk.is_batch(),
                             0,
                         );

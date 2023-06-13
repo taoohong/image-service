@@ -391,6 +391,7 @@ impl Node {
         chunk.set_uncompressed_offset(pre_uncompressed_offset);
         chunk.set_uncompressed_size(uncompressed_size);
 
+        let encrypted = blob_ctx.blob_cipher != crypt::Algorithm::None;
         let mut chunk_info = None;
 
         if self.inode.child_count() == 1
@@ -402,8 +403,11 @@ impl Node {
 
             if batch.chunk_data_buf_len() as u32 + uncompressed_size < ctx.batch_size {
                 // Add into current batch chunk directly.
-                chunk_info =
-                    Some(batch.generate_chunk_info(pre_uncompressed_offset, uncompressed_size)?);
+                chunk_info = Some(batch.generate_chunk_info(
+                    pre_uncompressed_offset,
+                    uncompressed_size,
+                    encrypted,
+                )?);
                 batch.append_chunk_data_buf(chunk_data);
             } else {
                 // Dump current batch chunk if exists, and then add into a new batch chunk.
@@ -416,8 +420,11 @@ impl Node {
                 }
 
                 // Add into a new batch chunk.
-                chunk_info =
-                    Some(batch.generate_chunk_info(pre_uncompressed_offset, uncompressed_size)?);
+                chunk_info = Some(batch.generate_chunk_info(
+                    pre_uncompressed_offset,
+                    uncompressed_size,
+                    encrypted,
+                )?);
                 batch.append_chunk_data_buf(chunk_data);
             }
         } else if !ctx.blob_features.contains(BlobFeatures::SEPARATE) {

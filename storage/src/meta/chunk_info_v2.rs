@@ -40,7 +40,6 @@ impl BlobChunkInfoV2Ondisk {
         }
     }
 
-    #[allow(unused)]
     pub(crate) fn set_encrypted(&mut self, encrypted: bool) {
         if encrypted {
             self.uncomp_info |= u64::to_le(CHUNK_V2_FLAG_ENCRYPTED);

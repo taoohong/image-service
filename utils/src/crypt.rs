@@ -11,10 +11,13 @@ use std::str::FromStr;
 
 use openssl::{rand, symm};
 
+use crate::round_up_usize;
+
 // The length of the key to do AES-XTS encryption.
 pub const AES_128_XTS_KEY_LENGTH: usize = 32;
 // The length of thd iv (Initialization Vector) to do AES-XTS encryption.
 pub const AES_XTS_IV_LENGTH: usize = 16;
+pub const ENCRYPTION_PAGE_SIZE: usize = 4096;
 
 /// Supported cipher algorithms.
 #[repr(u32)]
@@ -360,6 +363,8 @@ fn alloc_buf(size: usize) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
+    use crate::compress::{self, compress};
+
     use super::*;
 
     #[test]
@@ -442,7 +447,12 @@ mod tests {
             .encrypt(key.as_slice(), Some(&[0u8; 16]), b"1")
             .unwrap();
         let plaintext1 = cipher
-            .decrypt(key.as_slice(), Some(&[0u8; 16]), &ciphertext1, 1)
+            .decrypt(
+                key.as_slice(),
+                Some(&[0u8; 16]),
+                &ciphertext1,
+                ciphertext1.len(),
+            )
             .unwrap();
         assert_eq!(&plaintext1, b"1");
 

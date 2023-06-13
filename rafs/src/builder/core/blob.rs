@@ -220,21 +220,8 @@ impl Blob {
             header.set_inlined_chunk_digest(true);
         }
 
+        let header_size = header.as_bytes().len();
         blob_ctx.blob_meta_header = header;
-        let encrypted_header = if blob_ctx.blob_cipher != crypt::Algorithm::None {
-            if let Some(cipher_ctx) = &blob_ctx.cipher_ctx {
-                let (key, iv) = cipher_ctx.get_meta_cipher_context();
-                blob_ctx
-                    .cipher_object
-                    .encrypt(key, Some(iv), &header.as_bytes())
-                    .context("failed to encrypt meta data")?
-            } else {
-                return Err(Error::msg("the encrypt context can not be none"));
-            }
-        } else {
-            std::borrow::Cow::Borrowed(header.as_bytes())
-        };
-        let header_size = encrypted_header.len();
 
         // Write blob meta data and header
         match encrypted_data {
@@ -244,7 +231,7 @@ impl Blob {
                 blob_ctx.write_data(blob_writer, &buf)?;
             }
         }
-        blob_ctx.write_data(blob_writer, &encrypted_header)?;
+        blob_ctx.write_data(blob_writer, header.as_bytes())?;
 
         // Write tar header for `blob.meta`.
         if ctx.blob_inline_meta || ctx.features.is_enabled(Feature::BlobToc) {

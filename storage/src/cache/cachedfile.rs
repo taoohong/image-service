@@ -21,7 +21,7 @@ use std::time::Duration;
 use fuse_backend_rs::file_buf::FileVolatileSlice;
 use nix::sys::uio;
 use nydus_utils::compress::Decoder;
-use nydus_utils::crypt::{self, Cipher};
+use nydus_utils::crypt::{self, Cipher, ENCRYPTION_PAGE_SIZE};
 use nydus_utils::metrics::{BlobcacheMetrics, Metric};
 use nydus_utils::{compress, digest, round_up_usize, DelayType, Delayer, FileRangeReader};
 use tokio::runtime::Runtime;
@@ -41,7 +41,6 @@ use crate::{StorageError, StorageResult, RAFS_BATCH_SIZE_TO_GAP_SHIFT, RAFS_DEFA
 
 const DOWNLOAD_META_RETRY_COUNT: u32 = 5;
 const DOWNLOAD_META_RETRY_DELAY: u64 = 400;
-const ENCRYPTION_PAGE_SIZE: usize = 4096;
 
 #[derive(Default, Clone)]
 pub(crate) struct FileCacheMeta {
@@ -449,6 +448,10 @@ impl BlobCache for FileCacheEntry {
 
     fn blob_cipher_object(&self) -> Arc<Cipher> {
         self.blob_info.cipher_object()
+    }
+
+    fn blob_cipher_context(&self) -> Option<CipherContext> {
+        self.blob_info.cipher_context()
     }
 
     fn blob_digester(&self) -> digest::Algorithm {
