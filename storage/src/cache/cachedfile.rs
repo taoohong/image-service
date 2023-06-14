@@ -21,7 +21,7 @@ use std::time::Duration;
 use fuse_backend_rs::file_buf::FileVolatileSlice;
 use nix::sys::uio;
 use nydus_utils::compress::Decoder;
-use nydus_utils::crypt::{self, Cipher, ENCRYPTION_PAGE_SIZE};
+use nydus_utils::crypt::{self, Cipher};
 use nydus_utils::metrics::{BlobcacheMetrics, Metric};
 use nydus_utils::{compress, digest, round_up_usize, DelayType, Delayer, FileRangeReader};
 use tokio::runtime::Runtime;
@@ -41,6 +41,7 @@ use crate::{StorageError, StorageResult, RAFS_BATCH_SIZE_TO_GAP_SHIFT, RAFS_DEFA
 
 const DOWNLOAD_META_RETRY_COUNT: u32 = 5;
 const DOWNLOAD_META_RETRY_DELAY: u64 = 400;
+const ENCRYPTION_PAGE_SIZE: usize = 4096;
 
 #[derive(Default, Clone)]
 pub(crate) struct FileCacheMeta {
@@ -559,6 +560,7 @@ impl BlobCache for FileCacheEntry {
     }
 
     fn prefetch_range(&self, range: &BlobIoRange) -> Result<usize> {
+        trace!("prefetch range");
         let mut pending = Vec::with_capacity(range.chunks.len());
         if !self.chunk_map.is_persist() {
             let mut d_size = 0;
@@ -698,6 +700,7 @@ impl BlobObject for FileCacheEntry {
             return Ok(());
         }
 
+        trace!("fetch range compressed");
         let meta = self.meta.as_ref().ok_or_else(|| enoent!())?;
         let meta = meta.get_blob_meta().ok_or_else(|| einval!())?;
         let mut chunks =
@@ -725,6 +728,7 @@ impl BlobObject for FileCacheEntry {
             return Ok(());
         }
 
+        trace!("fetch range uncompressed");
         let meta = self.meta.as_ref().ok_or_else(|| einval!())?;
         let meta = meta.get_blob_meta().ok_or_else(|| einval!())?;
         let mut chunks = meta.get_chunks_uncompressed(offset, size, self.ondemand_batch_size())?;
@@ -770,6 +774,7 @@ impl FileCacheEntry {
     fn do_fetch_chunks(&self, chunks: &[Arc<dyn BlobChunkInfo>], prefetch: bool) -> Result<()> {
         // Validate input parameters.
         assert!(!chunks.is_empty());
+        trace!("do fetch chunks");
 
         // Get chunks not ready yet, also marking them as in-flight.
         let bitmap = self
@@ -816,6 +821,7 @@ impl FileCacheEntry {
                 prefetch,
             ) {
                 Ok(mut bufs) => {
+                    trace!("got ChunkDecompressState");
                     if self.is_raw_data {
                         let res = Self::persist_cached_data(
                             &self.file,

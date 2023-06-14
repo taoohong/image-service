@@ -11,13 +11,10 @@ use std::str::FromStr;
 
 use openssl::{rand, symm};
 
-use crate::round_up_usize;
-
 // The length of the key to do AES-XTS encryption.
 pub const AES_128_XTS_KEY_LENGTH: usize = 32;
 // The length of thd iv (Initialization Vector) to do AES-XTS encryption.
 pub const AES_XTS_IV_LENGTH: usize = 16;
-pub const ENCRYPTION_PAGE_SIZE: usize = 4096;
 
 /// Supported cipher algorithms.
 #[repr(u32)]

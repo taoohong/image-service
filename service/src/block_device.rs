@@ -259,6 +259,7 @@ impl BlockDevice {
                     BlockRange::DataBlob(d) => {
                         let offset = start - range.min as u32;
                         let offset = self.blocks_to_size(offset);
+                        trace!("data blob async read");
                         d.async_read(offset, s).await
                     }
                 };

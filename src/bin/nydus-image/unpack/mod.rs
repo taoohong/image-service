@@ -60,6 +60,7 @@ impl OCIUnpacker {
     }
 
     fn load_rafs(&self, config: Arc<ConfigV2>) -> Result<RafsSuper> {
+        debug!("config {:?}", config);
         let (rs, _) = RafsSuper::load_from_file(self.bootstrap.as_path(), config, false)?;
         Ok(rs)
     }

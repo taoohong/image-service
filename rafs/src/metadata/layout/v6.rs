@@ -1580,6 +1580,8 @@ impl RafsV6Blob {
             }
         };
 
+        trace!("meta ci compressor {}", blob_info.meta_ci_compressor());
+
         Ok(RafsV6Blob {
             blob_id,
             blob_index: blob_info.blob_index().to_le(),

@@ -33,10 +33,10 @@ use std::ops::{Add, BitAnd, Not};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use nydus_utils::{compress, crypt};
 use nydus_utils::compress::zlib_random::ZranContext;
 use nydus_utils::digest::{DigestData, RafsDigest};
 use nydus_utils::filemap::FileMapState;
+use nydus_utils::{compress, crypt};
 
 use crate::backend::BlobReader;
 use crate::device::v5::BlobV5ChunkInfo;
@@ -709,10 +709,50 @@ impl BlobCompressionContextInfo {
             )));
         }
 
+        trace!(
+            "get the blob info ci compressor {}",
+            blob_info.meta_ci_compressor()
+        );
+
+        let unencrypted = if blob_info.cipher() != crypt::Algorithm::None {
+            if let Some(ctx) = blob_info.cipher_context() {
+                let (key, iv) = ctx.get_meta_cipher_context();
+                match blob_info.cipher_object().decrypt(
+                    key,
+                    Some(iv),
+                    &raw_data[0..compressed_size as usize],
+                    compressed_size as usize,
+                ) {
+                    Ok(buf) => {
+                        assert_eq!(buf.len(), compressed_size as usize);
+                        buf
+                    }
+                    Err(e) => {
+                        return Err(eio!(format!(
+                            "failed to decrypt metadata for blob {} from backend, cipher {}, encrypted data size {}, {}",
+                            blob_info.blob_id(),
+                            blob_info.cipher(),
+                            compressed_size,
+                            e
+                        )));
+                    }
+                }
+            } else {
+                return Err(eio!(format!(
+                    "failed to read metadata for blob {} from backend, cipher {}, cipher context is none",
+                    blob_info.blob_id(),
+                    blob_info.cipher(),
+                )));
+            }
+        } else {
+            raw_data[0..compressed_size as usize].to_vec()
+        };
+
         let (uncompressed, header) = if blob_info.meta_ci_compressor() == compress::Algorithm::None
         {
-            let uncompressed = &raw_data[0..uncompressed_size as usize];
+            let uncompressed = &unencrypted;
             let header = &raw_data[uncompressed_size as usize..expected_raw_size];
+            trace!("read meta data not compressed");
             (Cow::Borrowed(uncompressed), header)
         } else {
             // Lz4 does not support concurrent decompression of the same data into
@@ -727,10 +767,11 @@ impl BlobCompressionContextInfo {
             // execute the process once when the blob.meta is created for the first
             // time, the memory consumption and performance impact are relatively
             // small.
+            trace!("read meta data compressed");
             let mut uncompressed = vec![0u8; uncompressed_size as usize];
             let header = &raw_data[compressed_size as usize..expected_raw_size];
             compress::decompress(
-                &raw_data[0..compressed_size as usize],
+                &unencrypted,
                 &mut uncompressed,
                 blob_info.meta_ci_compressor(),
             )
@@ -738,32 +779,6 @@ impl BlobCompressionContextInfo {
                 error!("failed to decompress blob meta data: {}", e);
                 e
             })?;
-            if blob_info.cipher() != crypt::Algorithm::None {
-                if let Some(ctx) = blob_info.cipher_context() {
-                    let (key, iv) = ctx.get_meta_cipher_context();
-                    match blob_info.cipher_object().decrypt(key, Some(iv), &uncompressed, uncompressed.len()) {
-                       Ok(buf) => {
-                            assert_eq!(buf.len(), uncompressed.len());
-                            uncompressed = buf.to_vec()
-                       },
-                       Err(e) => {
-                            return Err(eio!(format!(
-                                "failed to decrypt metadata for blob {} from backend, cipher {}, uncompressed data size {}, {}",
-                                blob_info.blob_id(),
-                                blob_info.cipher(),
-                                uncompressed.len(),
-                                e
-                            )));
-                       }
-                    }
-                } else {
-                    return Err(eio!(format!(
-                        "failed to read metadata for blob {} from backend, cipher {}, cipher context is none",
-                        blob_info.blob_id(),
-                        blob_info.cipher(),
-                    )));
-                }
-            }
             (Cow::Owned(uncompressed), header)
         };
 
@@ -882,6 +897,7 @@ impl BlobCompressionContext {
         batch_end: u64,
         batch_size: u64,
     ) -> Result<Vec<Arc<dyn BlobChunkInfo>>> {
+        trace!("get chunks uncompressed");
         self.chunk_info_array
             .get_chunks_uncompressed(self, start, end, batch_end, batch_size)
     }
@@ -894,6 +910,7 @@ impl BlobCompressionContext {
         batch_size: u64,
         prefetch: bool,
     ) -> Result<Vec<Arc<dyn BlobChunkInfo>>> {
+        trace!("get chunks compressed");
         self.chunk_info_array
             .get_chunks_compressed(self, start, end, batch_end, batch_size, prefetch)
     }
@@ -1221,6 +1238,8 @@ impl BlobMetaChunkArray {
         let mut start = 0;
         let mut end = 0;
 
+        trace!("the size is {}", size);
+
         while left < right {
             let mid = left + size / 2;
             // SAFETY: the call is made safe by the following invariants:
@@ -1234,6 +1253,11 @@ impl BlobMetaChunkArray {
                 start = entry.uncompressed_offset();
                 end = entry.uncompressed_end();
             };
+
+            trace!("{}", format!(
+                "failed to get chunk index, prefetch {}, left {}, right {}, start: {}, end: {}, addr: {}",
+                prefetch, left, right, start, end, addr
+            ));
 
             if start > addr {
                 right = mid;

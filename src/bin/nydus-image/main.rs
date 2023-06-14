@@ -886,6 +886,12 @@ impl Command {
                         conversion_type
                     );
                 }
+                if encrypt {
+                    bail!(
+                        "conversion type '{}' conflicts with '--encrypt'",
+                        conversion_type
+                    )
+                }
             }
             ConversionType::EStargzIndexToRef => {
                 Self::ensure_file(&source_path)?;
@@ -921,6 +927,12 @@ impl Command {
                 }
                 if blob_id.trim() == "" {
                     bail!("'--blob-id' is missing for '--type stargz_index'");
+                }
+                if encrypt {
+                    bail!(
+                        "conversion type '{}' conflicts with '--encrypt'",
+                        conversion_type
+                    )
                 }
             }
             ConversionType::DirectoryToStargz

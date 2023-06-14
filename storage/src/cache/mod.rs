@@ -309,6 +309,7 @@ pub trait BlobCache: Send + Sync {
                 return Err(eio!("storage backend returns less data than requested"));
             }
             let raw_buffer = if chunk.is_encrypted() {
+                trace!("read chunk from backend, ready to decrypt, {}", c_size);
                 let mut unencryted_buffer = alloc_buf(c_size);
                 self.decrypt_chunk_data(&raw_buffer, unencryted_buffer.as_mut_slice())?;
                 // If origin compressed data is less than 16 bytes, the compressed data
@@ -526,9 +527,14 @@ impl<'a, 'b> ChunkDecompressState<'a, 'b> {
         let offset_merged = (c_offset - self.blob_offset) as usize;
         let end_merged = offset_merged + c_size as usize;
         let buf = &self.c_buf[offset_merged..end_merged];
+        let mut buffer1 = alloc_buf(c_size as usize);
+        trace!("decompress chunk data");
+        if self.cache.blob_cipher() != crypt::Algorithm::None {
+            self.cache.decrypt_chunk_data(buf, &mut buffer1).unwrap();
+        }
         let mut buffer = alloc_buf(d_size);
         self.cache
-            .decompress_chunk_data(buf, &mut buffer, chunk.is_compressed())?;
+            .decompress_chunk_data(&buffer1, &mut buffer, chunk.is_compressed())?;
         self.cache
             .validate_chunk_data(chunk, &buffer, false)
             .map_err(|e| {

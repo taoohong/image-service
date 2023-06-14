@@ -183,9 +183,11 @@ impl Blob {
         };
 
         let mut compressor = compress::Algorithm::Zstd;
+        trace!("ci data size {}", ci_data.len());
         let (compressed_data, compressed) = compress::compress(ci_data, compressor)
             .with_context(|| "failed to compress blob chunk info array".to_string())?;
-        let encrypted_data = if blob_ctx.blob_cipher != crypt::Algorithm::None {
+
+        let encrypted_ci_data = if blob_ctx.blob_cipher != crypt::Algorithm::None {
             if let Some(cipher_ctx) = &blob_ctx.cipher_ctx {
                 let (key, iv) = cipher_ctx.get_meta_cipher_context();
                 blob_ctx
@@ -202,8 +204,9 @@ impl Blob {
         if !compressed {
             compressor = compress::Algorithm::None;
         }
+        trace!("ci compressor {:?}", compressor);
         let compressed_offset = blob_writer.pos()?;
-        let compressed_size = encrypted_data.len() as u64;
+        let compressed_size = encrypted_ci_data.len() as u64;
         let uncompressed_size = ci_data.len() as u64;
 
         header.set_ci_compressor(compressor);
@@ -224,7 +227,7 @@ impl Blob {
         blob_ctx.blob_meta_header = header;
 
         // Write blob meta data and header
-        match encrypted_data {
+        match encrypted_ci_data {
             Cow::Owned(v) => blob_ctx.write_data(blob_writer, &v)?,
             Cow::Borrowed(v) => {
                 let buf = v.to_vec();
