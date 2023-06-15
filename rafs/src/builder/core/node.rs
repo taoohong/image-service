@@ -365,6 +365,10 @@ impl Node {
             chunk.set_id(RafsDigest::from_buf(buf, ctx.digester));
         }
 
+        if ctx.cipher != crypt::Algorithm::None && !ctx.conversion_type.is_to_ref() {
+            chunk.set_encrypted(true);
+        }
+
         Ok((chunk, chunk_info))
     }
 
@@ -435,6 +439,7 @@ impl Node {
             chunk.set_compressed_offset(pre_compressed_offset);
             chunk.set_compressed_size(compressed_size);
             chunk.set_compressed(is_compressed);
+            println!("no batch size way, comprssed {}", is_compressed);
         }
 
         event_tracer!("blob_uncompressed_size", +uncompressed_size);
@@ -472,6 +477,7 @@ impl Node {
         blob_ctx.current_compressed_offset += compressed_size as u64;
         blob_ctx.compressed_blob_size += compressed_size as u64;
 
+        print!("when writing chunk data, compressed {}", is_compressed);
         Ok((pre_compressed_offset, compressed_size, is_compressed))
     }
 

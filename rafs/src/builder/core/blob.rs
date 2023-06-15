@@ -204,7 +204,7 @@ impl Blob {
         if !compressed {
             compressor = compress::Algorithm::None;
         }
-        trace!("ci compressor {:?}", compressor);
+        println!("ci compressor {:?}", compressor);
         let compressed_offset = blob_writer.pos()?;
         let compressed_size = encrypted_ci_data.len() as u64;
         let uncompressed_size = ci_data.len() as u64;

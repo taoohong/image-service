@@ -294,7 +294,12 @@ pub trait BlobCache: Send + Sync {
 
         if self.is_zran() {
             return Err(enosys!("read_chunk_from_backend"));
-        } else if chunk.is_compressed() {
+        } else if !chunk.is_compressed() && !chunk.is_encrypted() {
+            let size = self.reader().read(buffer, offset).map_err(|e| eio!(e))?;
+            if size != buffer.len() {
+                return Err(eio!("storage backend returns less data than requested"));
+            }
+        } else {
             let c_size = if self.is_legacy_stargz() {
                 self.get_legacy_stargz_size(offset, buffer.len())?
             } else {
@@ -317,25 +322,16 @@ pub trait BlobCache: Send + Sync {
                 // So before doing decrypt opration before decompress opration, we have to truncate it.
                 if c_size == 16 {
                     let may_padding_value = unencryted_buffer[15] as usize;
-                    let unencrypted_buffer_size = if may_padding_value < 16 {
-                        unencryted_buffer.len() - may_padding_value
-                    } else {
-                        unencryted_buffer.len()
-                    };
-                    unencryted_buffer[..unencrypted_buffer_size].to_vec()
-                } else {
-                    unencryted_buffer
+                    if may_padding_value < 16 {
+                        unencryted_buffer.truncate(c_size - may_padding_value);
+                    }
                 }
+                unencryted_buffer
             } else {
                 raw_buffer
             };
-            self.decompress_chunk_data(&raw_buffer, buffer, true)?;
+            self.decompress_chunk_data(&raw_buffer, buffer, chunk.is_compressed())?;
             c_buf = Some(raw_buffer);
-        } else {
-            let size = self.reader().read(buffer, offset).map_err(|e| eio!(e))?;
-            if size != buffer.len() {
-                return Err(eio!("storage backend returns less data than requested"));
-            }
         }
 
         let duration = Instant::now().duration_since(start).as_millis();
@@ -526,15 +522,27 @@ impl<'a, 'b> ChunkDecompressState<'a, 'b> {
 
         let offset_merged = (c_offset - self.blob_offset) as usize;
         let end_merged = offset_merged + c_size as usize;
-        let buf = &self.c_buf[offset_merged..end_merged];
-        let mut buffer1 = alloc_buf(c_size as usize);
-        trace!("decompress chunk data");
-        if self.cache.blob_cipher() != crypt::Algorithm::None {
-            self.cache.decrypt_chunk_data(buf, &mut buffer1).unwrap();
-        }
+        let raw_buffer = if chunk.is_encrypted() {
+            trace!("decrypt chunk data, c_size {}, d_size{}", c_size, d_size);
+            let mut t_buf = alloc_buf(c_size as usize);
+            self.cache
+                .decrypt_chunk_data(&self.c_buf[offset_merged..end_merged], &mut t_buf)
+                .unwrap();
+            if c_size == 16 {
+                let may_padding_value = t_buf[15] as usize;
+                if may_padding_value < 16 {
+                    trace!("the padding size {}", may_padding_value);
+                    t_buf.truncate(16 - may_padding_value);
+                }
+            }
+            t_buf
+        } else {
+            self.c_buf[offset_merged..end_merged].to_vec()
+        };
         let mut buffer = alloc_buf(d_size);
+        trace!("decomprss chunk data, compressed {}", chunk.is_compressed());
         self.cache
-            .decompress_chunk_data(&buffer1, &mut buffer, chunk.is_compressed())?;
+            .decompress_chunk_data(&raw_buffer, &mut buffer, chunk.is_compressed())?;
         self.cache
             .validate_chunk_data(chunk, &buffer, false)
             .map_err(|e| {

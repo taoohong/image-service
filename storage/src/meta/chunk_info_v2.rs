@@ -14,10 +14,10 @@ const CHUNK_V2_UNCOMP_OFFSET_SHIFT: u64 = 12;
 const CHUNK_V2_UNCOMP_SIZE_SHIFT: u64 = 32;
 const CHUNK_V2_FLAG_MASK: u64 = 0xff << 56;
 const CHUNK_V2_FLAG_COMPRESSED: u64 = 0x1 << 56;
-const CHUNK_V2_FLAG_ENCRYPTED: u64 = 0x2 << 56;
 const CHUNK_V2_FLAG_ZRAN: u64 = 0x2 << 56;
 const CHUNK_V2_FLAG_BATCH: u64 = 0x4 << 56;
-const CHUNK_V2_FLAG_VALID: u64 = 0x7 << 56;
+const CHUNK_V2_FLAG_ENCRYPTED: u64 = 0x8 << 56;
+const CHUNK_V2_FLAG_VALID: u64 = 0xf << 56;
 
 /// Chunk compression information on disk format V2.
 #[repr(C, packed)]
@@ -197,10 +197,12 @@ impl BlobMetaChunkInfo for BlobChunkInfoV2Ondisk {
             || self.uncompressed_end() > state.uncompressed_size
             || self.uncompressed_size() == 0
             || (!state.is_separate() && self.compressed_size() == 0)
-            || (!self.is_compressed() && self.uncompressed_size() != self.compressed_size())
+            || (!self.is_encrypted()
+                && !self.is_compressed()
+                && self.uncompressed_size() != self.compressed_size())
         {
             return Err(einval!(format!(
-                "invalid chunk, blob: index {}/c_end 0x{:}/d_end 0x{:x}, chunk: c_end 0x{:x}/d_end 0x{:x}/compressed {} zran {}",
+                "invalid chunk, blob: index {}/c_end 0x{:}/d_end 0x{:x}, chunk: c_end 0x{:x}/d_end 0x{:x}/compressed {} zran {} encrypted {}",
                 state.blob_index,
                 state.compressed_size,
                 state.uncompressed_size,
@@ -208,8 +210,20 @@ impl BlobMetaChunkInfo for BlobChunkInfoV2Ondisk {
                 self.uncompressed_end(),
                 self.is_compressed(),
                 self.is_zran(),
+                self.is_encrypted(),
             )));
         }
+
+        trace!("blob: index {}/c_end 0x{:}/d_end 0x{:x}, chunk: c_end 0x{:x}/d_end 0x{:x}/compressed {} zran {} encrypted {}",
+            state.blob_index,
+            state.compressed_size,
+            state.uncompressed_size,
+            self.compressed_end(),
+            self.uncompressed_end(),
+            self.is_compressed(),
+            self.is_zran(),
+            self.is_encrypted(),
+        );
 
         let invalid_flags = self.check_flags();
         if invalid_flags != 0 {

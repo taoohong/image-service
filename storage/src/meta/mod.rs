@@ -1238,8 +1238,6 @@ impl BlobMetaChunkArray {
         let mut start = 0;
         let mut end = 0;
 
-        trace!("the size is {}", size);
-
         while left < right {
             let mid = left + size / 2;
             // SAFETY: the call is made safe by the following invariants:
@@ -1254,10 +1252,13 @@ impl BlobMetaChunkArray {
                 end = entry.uncompressed_end();
             };
 
-            trace!("{}", format!(
-                "failed to get chunk index, prefetch {}, left {}, right {}, start: {}, end: {}, addr: {}",
-                prefetch, left, right, start, end, addr
-            ));
+            trace!(
+                "{}",
+                format!(
+                    "got chunk index, prefetch {}, left {}, right {}, start: {}, end: {}, addr: {}",
+                    prefetch, left, right, start, end, addr
+                )
+            );
 
             if start > addr {
                 right = mid;

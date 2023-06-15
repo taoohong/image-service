@@ -821,6 +821,12 @@ impl Command {
                         conversion_type
                     );
                 }
+                if encrypt {
+                    bail!(
+                        "conversion type '{}' conflicts with '--encrypt'",
+                        conversion_type
+                    )
+                }
             }
             ConversionType::TarToTarfs => {
                 Self::ensure_file(&source_path)?;
@@ -885,12 +891,6 @@ impl Command {
                         "conversion type '{}' conflicts with '--aligned-chunk'",
                         conversion_type
                     );
-                }
-                if encrypt {
-                    bail!(
-                        "conversion type '{}' conflicts with '--encrypt'",
-                        conversion_type
-                    )
                 }
             }
             ConversionType::EStargzIndexToRef => {
@@ -1012,11 +1012,21 @@ impl Command {
         }
 
         let mut builder: Box<dyn Builder> = match conversion_type {
-            ConversionType::DirectoryToRafs => Box::new(DirectoryBuilder::new()),
+            ConversionType::DirectoryToRafs => {
+                if encrypt {
+                    build_ctx.blob_features.insert(BlobFeatures::CHUNK_INFO_V2);
+                }
+                Box::new(DirectoryBuilder::new())
+            }
             ConversionType::EStargzIndexToRef => Box::new(StargzBuilder::new(blob_data_size)),
             ConversionType::EStargzToRafs
             | ConversionType::TargzToRafs
-            | ConversionType::TarToRafs => Box::new(TarballBuilder::new(conversion_type)),
+            | ConversionType::TarToRafs => {
+                if encrypt {
+                    build_ctx.blob_features.insert(BlobFeatures::CHUNK_INFO_V2);
+                }
+                Box::new(TarballBuilder::new(conversion_type))
+            }
             ConversionType::EStargzToRef
             | ConversionType::TargzToRef
             | ConversionType::TarToRef => {
