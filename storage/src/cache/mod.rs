@@ -16,6 +16,7 @@
 //!   `BlobCacheMgr`, simply reporting each chunk as cached or not cached according to
 //!   configuration.
 
+use std::borrow::Cow;
 use std::cmp;
 use std::io::Result;
 use std::sync::Arc;
@@ -23,7 +24,7 @@ use std::time::Instant;
 
 use fuse_backend_rs::file_buf::FileVolatileSlice;
 use nydus_utils::compress::zlib_random::ZranDecoder;
-use nydus_utils::crypt::{self, Cipher};
+use nydus_utils::crypt::{self, Cipher, AFTER_PADDING_LENGTH, DATA_UNIT_LENGTH, PADDING_MAGIC_END};
 use nydus_utils::{compress, digest};
 
 use crate::backend::{BlobBackend, BlobReader};
@@ -317,13 +318,23 @@ pub trait BlobCache: Send + Sync {
                 trace!("read chunk from backend, ready to decrypt, {}", c_size);
                 let mut unencryted_buffer = alloc_buf(c_size);
                 self.decrypt_chunk_data(&raw_buffer, unencryted_buffer.as_mut_slice())?;
-                // If origin compressed data is less than 16 bytes, the compressed data
-                // whill be padding to 16 bytes with value (16 - data.len()) when be encrypted.
-                // So before doing decrypt opration before decompress opration, we have to truncate it.
-                if c_size == 16 {
-                    let may_padding_value = unencryted_buffer[15] as usize;
-                    if may_padding_value < 16 {
-                        unencryted_buffer.truncate(c_size - may_padding_value);
+                // If original plaintext is less than 16 bytes（encryption data unit length),
+                // the plaintext will be padded to 16 bytes with value (16 - data.len())
+                // and ended with padding magic end ([7,8,9,0]) before being encrypted.
+                // So after decrypting the data, we have to truncate it to original size.
+                if c_size as usize == AFTER_PADDING_LENGTH
+                    && unencryted_buffer
+                        [AFTER_PADDING_LENGTH - PADDING_MAGIC_END.len()..AFTER_PADDING_LENGTH]
+                        == PADDING_MAGIC_END
+                {
+                    let padding_value = unencryted_buffer[DATA_UNIT_LENGTH - 1] as usize;
+                    if padding_value < DATA_UNIT_LENGTH {
+                        unencryted_buffer.truncate(DATA_UNIT_LENGTH - padding_value);
+                    } else {
+                        return Err(eio!(format!(
+                            "failed to truncate the data after decryption, c_size {}",
+                            c_size,
+                        )));
                     }
                 }
                 unencryted_buffer
@@ -528,16 +539,23 @@ impl<'a, 'b> ChunkDecompressState<'a, 'b> {
             self.cache
                 .decrypt_chunk_data(&self.c_buf[offset_merged..end_merged], &mut t_buf)
                 .unwrap();
-            if c_size == 16 {
-                let may_padding_value = t_buf[15] as usize;
-                if may_padding_value < 16 {
-                    trace!("the padding size {}", may_padding_value);
-                    t_buf.truncate(16 - may_padding_value);
+            if c_size as usize == AFTER_PADDING_LENGTH
+                && t_buf[AFTER_PADDING_LENGTH - PADDING_MAGIC_END.len()..AFTER_PADDING_LENGTH]
+                    == PADDING_MAGIC_END
+            {
+                let padding_value = t_buf[DATA_UNIT_LENGTH - 1] as usize;
+                if padding_value < DATA_UNIT_LENGTH {
+                    t_buf.truncate(DATA_UNIT_LENGTH - padding_value);
+                } else {
+                    return Err(einval!(format!(
+                        "failed to truncate the data after decryption, c_size {}, d_size {}",
+                        c_size, d_size,
+                    )));
                 }
             }
-            t_buf
+            Cow::Owned(t_buf)
         } else {
-            self.c_buf[offset_merged..end_merged].to_vec()
+            Cow::Borrowed(&self.c_buf[offset_merged..end_merged])
         };
         let mut buffer = alloc_buf(d_size);
         trace!("decomprss chunk data, compressed {}", chunk.is_compressed());

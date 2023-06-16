@@ -1429,12 +1429,12 @@ struct RafsV6Blob {
     // When using encryption mod, it's reused for saving encryption iv first 8 bytes.
     blob_meta_size: u64,
     // When using encryption mod, used for cipher_iv last 8 bytes.
-    // 0                 7                    15
-    // +-----------------+--------------------+
-    // | blob_meta_size  |  cipher_iv[8..16]  |
-    // |     8bytes      |      8bytes        |
-    // +-----------------+--------------------+
-    //  \_        cipher_iv[0..16]           _/
+    // 0                  7                 15
+    // +------------------+------------------+
+    // |  blob_meta_size  | cipher_iv[8..16] |
+    // |     8bytes       |      8bytes      |
+    // +------------------+------------------+
+    //  \_         cipher_iv[0..16]        _/
     cipher_iv: [u8; 8],
     // Crypt algorithm for chunks in the blob.
     cipher_algo: u32,

@@ -892,6 +892,12 @@ impl Command {
                         conversion_type
                     );
                 }
+                if encrypt {
+                    bail!(
+                        "conversion type '{}' conflicts with '--encrypt'",
+                        conversion_type
+                    )
+                }
             }
             ConversionType::EStargzIndexToRef => {
                 Self::ensure_file(&source_path)?;

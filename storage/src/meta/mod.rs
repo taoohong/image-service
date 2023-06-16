@@ -714,47 +714,67 @@ impl BlobCompressionContextInfo {
             blob_info.meta_ci_compressor()
         );
 
-        let unencrypted = if blob_info.cipher() != crypt::Algorithm::None {
-            if let Some(ctx) = blob_info.cipher_context() {
-                let (key, iv) = ctx.get_meta_cipher_context();
-                match blob_info.cipher_object().decrypt(
-                    key,
-                    Some(iv),
-                    &raw_data[0..compressed_size as usize],
-                    compressed_size as usize,
-                ) {
-                    Ok(buf) => {
-                        assert_eq!(buf.len(), compressed_size as usize);
-                        buf
-                    }
-                    Err(e) => {
-                        return Err(eio!(format!(
-                            "failed to decrypt metadata for blob {} from backend, cipher {}, encrypted data size {}, {}",
-                            blob_info.blob_id(),
-                            blob_info.cipher(),
-                            compressed_size,
-                            e
-                        )));
-                    }
+        let (unencrypted, header) = if blob_info.cipher() != crypt::Algorithm::None {
+            let cipher_ctx = match blob_info.cipher_context() {
+                Some(ctx) => ctx,
+                _ => {
+                    return Err(eio!(format!(
+                        "failed to read metadata for blob {} from backend, cipher {}, cipher context is none",
+                        blob_info.blob_id(),
+                        blob_info.cipher(),
+                    )));
                 }
-            } else {
-                return Err(eio!(format!(
-                    "failed to read metadata for blob {} from backend, cipher {}, cipher context is none",
-                    blob_info.blob_id(),
-                    blob_info.cipher(),
-                )));
-            }
+            };
+            let (key, iv) = cipher_ctx.get_meta_cipher_context();
+            let unencrypted = match blob_info.cipher_object().decrypt(
+                key,
+                Some(iv),
+                &raw_data[0..compressed_size as usize],
+                compressed_size as usize,
+            ) {
+                Ok(buf) => {
+                    assert_eq!(buf.len(), compressed_size as usize);
+                    Cow::Owned(buf)
+                }
+                Err(e) => {
+                    return Err(eio!(format!(
+                        "failed to decrypt metadata for blob {} from backend, cipher {}, encrypted data size {}, {}",
+                        blob_info.blob_id(),
+                        blob_info.cipher(),
+                        compressed_size,
+                        e
+                    )));
+                }
+            };
+            let header = match blob_info.cipher_object().decrypt(
+                key,
+                Some(iv),
+                &raw_data[compressed_size as usize..expected_raw_size],
+                BLOB_CCT_HEADER_SIZE as usize,
+            ) {
+                Ok(buf) => {
+                    assert_eq!(buf.len(), BLOB_CCT_HEADER_SIZE as usize);
+                    Cow::Owned(buf)
+                }
+                Err(e) => {
+                    return Err(eio!(format!(
+                        "failed to decrypt meta header for blob {} from backend, cipher {}, encrypted data size {}, {}",
+                        blob_info.blob_id(),
+                        blob_info.cipher(),
+                        compressed_size,
+                        e
+                    )));
+                }
+            };
+            (unencrypted, header)
         } else {
-            raw_data[0..compressed_size as usize].to_vec()
+            (
+                Cow::Borrowed(&raw_data[0..compressed_size as usize]),
+                Cow::Borrowed(&raw_data[0..compressed_size as usize]),
+            )
         };
 
-        let (uncompressed, header) = if blob_info.meta_ci_compressor() == compress::Algorithm::None
-        {
-            let uncompressed = &unencrypted;
-            let header = &raw_data[uncompressed_size as usize..expected_raw_size];
-            trace!("read meta data not compressed");
-            (Cow::Borrowed(uncompressed), header)
-        } else {
+        let uncompressed = if blob_info.meta_ci_compressor() != compress::Algorithm::None {
             // Lz4 does not support concurrent decompression of the same data into
             // the same piece of memory. There will be multiple containers mmap the
             // same file, causing the buffer to be shared between different
@@ -769,7 +789,6 @@ impl BlobCompressionContextInfo {
             // small.
             trace!("read meta data compressed");
             let mut uncompressed = vec![0u8; uncompressed_size as usize];
-            let header = &raw_data[compressed_size as usize..expected_raw_size];
             compress::decompress(
                 &unencrypted,
                 &mut uncompressed,
@@ -779,13 +798,15 @@ impl BlobCompressionContextInfo {
                 error!("failed to decompress blob meta data: {}", e);
                 e
             })?;
-            (Cow::Owned(uncompressed), header)
+            Cow::Owned(uncompressed)
+        } else {
+            unencrypted
         };
 
         buffer[0..uncompressed_size as usize].copy_from_slice(&uncompressed);
         buffer[aligned_uncompressed_size as usize
             ..(aligned_uncompressed_size + BLOB_CCT_HEADER_SIZE) as usize]
-            .copy_from_slice(header);
+            .copy_from_slice(&header);
 
         Ok(())
     }

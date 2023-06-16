@@ -155,8 +155,8 @@ impl Blob {
         if !blob_ctx.blob_meta_info_enabled || blob_ctx.uncompressed_blob_size == 0 {
             return Ok(());
         }
-
         // Prepare blob meta information data.
+        let encrypt = ctx.cipher != crypt::Algorithm::None;
         let blob_meta_info = &blob_ctx.blob_meta_info;
         let mut ci_data = blob_meta_info.as_byte_slice();
         let mut inflate_buf = Vec::new();
@@ -187,7 +187,7 @@ impl Blob {
         let (compressed_data, compressed) = compress::compress(ci_data, compressor)
             .with_context(|| "failed to compress blob chunk info array".to_string())?;
 
-        let encrypted_ci_data = if blob_ctx.blob_cipher != crypt::Algorithm::None {
+        let encrypted_ci_data = if encrypt {
             if let Some(cipher_ctx) = &blob_ctx.cipher_ctx {
                 let (key, iv) = cipher_ctx.get_meta_cipher_context();
                 blob_ctx
@@ -223,8 +223,22 @@ impl Blob {
             header.set_inlined_chunk_digest(true);
         }
 
-        let header_size = header.as_bytes().len();
         blob_ctx.blob_meta_header = header;
+        // Size of header must be bigger than encryption data unit.
+        let encrypted_header = if encrypt {
+            if let Some(cipher_ctx) = &blob_ctx.cipher_ctx {
+                let (key, iv) = cipher_ctx.get_meta_cipher_context();
+                blob_ctx
+                    .cipher_object
+                    .encrypt(key, Some(iv), header.as_bytes())
+                    .context("failed to encrypt meta data")?
+            } else {
+                return Err(Error::msg("the encrypt context can not be none"));
+            }
+        } else {
+            Cow::Borrowed(header.as_bytes())
+        };
+        let header_size = encrypted_header.len();
 
         // Write blob meta data and header
         match encrypted_ci_data {
@@ -234,7 +248,7 @@ impl Blob {
                 blob_ctx.write_data(blob_writer, &buf)?;
             }
         }
-        blob_ctx.write_data(blob_writer, header.as_bytes())?;
+        blob_ctx.write_data(blob_writer, &encrypted_header)?;
 
         // Write tar header for `blob.meta`.
         if ctx.blob_inline_meta || ctx.features.is_enabled(Feature::BlobToc) {

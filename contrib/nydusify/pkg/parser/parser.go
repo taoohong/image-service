@@ -180,6 +180,7 @@ func (parser *Parser) PullNydusBootstrap(ctx context.Context, image *Image) (io.
 // Decrypt Nydus bootstrap layer if decryption key is provided.
 func (parser *Parser) DecryptNydusBootstrap(ctx context.Context, reader io.Reader, image *Image, decryptKeys []string) (io.ReadCloser, error) {
 	bootstrapDesc := FindNydusBootstrapDesc(&image.Manifest)
+	fmt.Printf("decryptKeys {%v}\n", decryptKeys)
 	dcc, err := enchelpers.CreateCryptoConfig([]string{}, decryptKeys)
 	if err != nil {
 		return nil, errors.Wrap(err, "Create crypto config failed")

@@ -11,10 +11,16 @@ use std::str::FromStr;
 
 use openssl::{rand, symm};
 
+// The length of the data unit to be encrypted.
+pub const DATA_UNIT_LENGTH: usize = 16;
 // The length of the key to do AES-XTS encryption.
 pub const AES_128_XTS_KEY_LENGTH: usize = 32;
 // The length of thd iv (Initialization Vector) to do AES-XTS encryption.
 pub const AES_XTS_IV_LENGTH: usize = 16;
+// The padding magic end.
+pub const PADDING_MAGIC_END: [u8; 4] = [7u8, 8u8, 9u8, 0u8];
+// DATA_UNIT_LENGTH + length of PADDING_MAGIC_FLAG.
+pub const AFTER_PADDING_LENGTH: usize = 20;
 
 /// Supported cipher algorithms.
 #[repr(u32)]
@@ -166,14 +172,16 @@ impl Cipher {
             Cipher::Aes128Xts(cipher) => {
                 assert_eq!(key.len(), 32);
                 let mut buf;
-                let data = if data.len() >= 16 {
+                let data = if data.len() >= DATA_UNIT_LENGTH {
                     data
                 } else {
                     // CMS (Cryptographic Message Syntax).
-                    // This pads with the same value as the number of padding bytes.
-                    let val = (16 - data.len()) as u8;
-                    buf = [val; 16];
+                    // This pads with the same value as the number of padding bytes
+                    // and append the magic padding end.
+                    let val = (DATA_UNIT_LENGTH - data.len()) as u8;
+                    buf = [val; AFTER_PADDING_LENGTH];
                     buf[..data.len()].copy_from_slice(data);
+                    buf[DATA_UNIT_LENGTH..AFTER_PADDING_LENGTH].copy_from_slice(&PADDING_MAGIC_END);
                     &buf
                 };
                 Self::cipher(*cipher, symm::Mode::Encrypt, key, iv, data)
@@ -183,14 +191,13 @@ impl Cipher {
             Cipher::Aes256Xts(cipher) => {
                 assert_eq!(key.len(), 64);
                 let mut buf;
-                let data = if data.len() >= 16 {
+                let data = if data.len() >= DATA_UNIT_LENGTH {
                     data
                 } else {
-                    // CMS (Cryptographic Message Syntax).
-                    // This pads with the same value as the number of padding bytes.
-                    let val = (16 - data.len()) as u8;
-                    buf = [val; 16];
+                    let val = (DATA_UNIT_LENGTH - data.len()) as u8;
+                    buf = [val; AFTER_PADDING_LENGTH];
                     buf[..data.len()].copy_from_slice(data);
+                    buf[DATA_UNIT_LENGTH..AFTER_PADDING_LENGTH].copy_from_slice(&PADDING_MAGIC_END);
                     &buf
                 };
                 Self::cipher(*cipher, symm::Mode::Encrypt, key, iv, data)
@@ -224,10 +231,10 @@ impl Cipher {
 
         // Trim possible padding.
         if data.len() > size {
-            if data.len() != 16 {
+            if data.len() != DATA_UNIT_LENGTH {
                 return Err(einval!("Cipher::decrypt: invalid padding data"));
             }
-            let val = (16 - size) as u8;
+            let val = (DATA_UNIT_LENGTH - size) as u8;
             for item in data.iter().skip(size) {
                 if *item != val {
                     return Err(einval!("Cipher::decrypt: invalid padding data"));
@@ -282,8 +289,8 @@ impl Cipher {
         match self {
             Cipher::None => plaintext_size,
             Cipher::Aes128Xts(_) | Cipher::Aes256Xts(_) => {
-                if plaintext_size < 16 {
-                    16
+                if plaintext_size < DATA_UNIT_LENGTH {
+                    DATA_UNIT_LENGTH
                 } else {
                     plaintext_size
                 }
@@ -360,8 +367,6 @@ fn alloc_buf(size: usize) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
-    use crate::compress::{self, compress};
-
     use super::*;
 
     #[test]
