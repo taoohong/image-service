@@ -20,5 +20,6 @@ const (
 
 	LayerAnnotationNydusReferenceBlobIDs = "containerd.io/snapshot/nydus-reference-blob-ids"
 
-	LayerAnnotationUncompressed = "containerd.io/uncompressed"
+	LayerAnnotationUncompressed       = "containerd.io/uncompressed"
+	LayerAnnotationNydusEncryptedBlob = "containerd.io/snapshot/encrypted-blob"
 )

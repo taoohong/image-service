@@ -87,7 +87,7 @@ func (checker *Checker) Output(
 		}
 		defer bootstrapReader.Close()
 
-		if len(opt.DecryptKeys) != 0 {
+		if len(opt.DecryptKeys) != 0 && utils.IsEncryptedNydusImage(&targetParsed.NydusImage.Manifest) {
 			logrus.Infof("Decrypting Nydus bootstrap layer")
 			bootstrapReader, err = checker.targetParser.DecryptNydusBootstrap(ctx, bootstrapReader, targetParsed.NydusImage, opt.DecryptKeys)
 			if err != nil {
