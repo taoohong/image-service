@@ -23,7 +23,6 @@ use tar::{EntryType, Header};
 use vmm_sys_util::tempfile::TempFile;
 
 use nydus_api::ConfigV2;
-use nydus_storage::context::CipherContext;
 use nydus_storage::device::{BlobFeatures, BlobInfo};
 use nydus_storage::factory::BlobFactory;
 use nydus_storage::meta::toc::{TocEntryList, TocLocation};
@@ -31,6 +30,7 @@ use nydus_storage::meta::{
     toc, BatchContextGenerator, BlobChunkInfoV2Ondisk, BlobCompressionContextHeader,
     BlobMetaChunkArray, BlobMetaChunkInfo, ZranContextGenerator,
 };
+use nydus_utils::crypt::CipherContext;
 use nydus_utils::digest::DigestData;
 use nydus_utils::{compress, digest, div_round_up, round_down, BufReaderInfo};
 

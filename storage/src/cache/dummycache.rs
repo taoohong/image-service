@@ -24,13 +24,12 @@ use std::sync::Arc;
 
 use fuse_backend_rs::file_buf::FileVolatileSlice;
 use nydus_api::CacheConfigV2;
-use nydus_utils::crypt::{Algorithm, Cipher};
+use nydus_utils::crypt::{Algorithm, Cipher, CipherContext};
 use nydus_utils::{compress, digest};
 
 use crate::backend::{BlobBackend, BlobReader};
 use crate::cache::state::{ChunkMap, NoopChunkMap};
 use crate::cache::{BlobCache, BlobCacheMgr};
-use crate::context::CipherContext;
 use crate::device::{
     BlobChunkInfo, BlobFeatures, BlobInfo, BlobIoDesc, BlobIoVec, BlobPrefetchRequest,
 };

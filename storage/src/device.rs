@@ -38,11 +38,10 @@ use fuse_backend_rs::file_traits::FileReadWriteVolatile;
 
 use nydus_api::ConfigV2;
 use nydus_utils::compress;
-use nydus_utils::crypt::{self, Cipher};
+use nydus_utils::crypt::{self, Cipher, CipherContext};
 use nydus_utils::digest::{self, RafsDigest};
 
 use crate::cache::BlobCache;
-use crate::context::CipherContext;
 use crate::factory::BLOB_FACTORY;
 
 pub(crate) const BLOB_FEATURE_INCOMPAT_MASK: u32 = 0x0000_ffff;

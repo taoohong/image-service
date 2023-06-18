@@ -19,9 +19,8 @@ use nydus_storage::meta::{
     BlobChunkInfoV1Ondisk, BlobChunkInfoV2Ondisk, BlobCompressionContextHeader,
 };
 use nydus_storage::{RAFS_MAX_CHUNKS_PER_BLOB, RAFS_MAX_CHUNK_SIZE};
-use nydus_utils::crypt::Cipher;
+use nydus_utils::crypt::{Cipher, CipherContext};
 use nydus_utils::{compress, crypt, digest, round_up, ByteSize};
-use storage::context::CipherContext;
 
 use crate::metadata::inode::InodeWrapper;
 use crate::metadata::layout::v5::RafsV5ChunkInfo;

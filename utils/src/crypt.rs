@@ -13,14 +13,24 @@ use openssl::{rand, symm};
 
 // The length of the data unit to be encrypted.
 pub const DATA_UNIT_LENGTH: usize = 16;
-// The length of the key to do AES-XTS encryption.
-pub const AES_128_XTS_KEY_LENGTH: usize = 32;
-// The length of thd iv (Initialization Vector) to do AES-XTS encryption.
-pub const AES_XTS_IV_LENGTH: usize = 16;
 // The padding magic end.
 pub const PADDING_MAGIC_END: [u8; 4] = [7u8, 8u8, 9u8, 0u8];
 // DATA_UNIT_LENGTH + length of PADDING_MAGIC_FLAG.
-pub const AFTER_PADDING_LENGTH: usize = 20;
+pub const PADDING_LENGTH: usize = 20;
+
+// The length of the key to do AES-128-XTS encryption.
+pub const AES_128_XTS_KEY_LENGTH: usize = 32;
+// The length of the key to do AES-256-XTS encryption.
+pub const AES_256_XTS_KEY_LENGTH: usize = 64;
+// The length of thd iv (Initialization Vector) to do AES-XTS encryption.
+pub const AES_XTS_IV_LENGTH: usize = 16;
+
+// Openssl rejects keys with identical first and second halves for xts.
+// Use a default key for such cases.
+const DEFAULT_CE_KEY: [u8; 32] = [
+    0xac, 0xed, 0x14, 0x69, 0x94, 0x23, 0x1e, 0xca, 0x44, 0x8c, 0xed, 0x2f, 0x6b, 0x40, 0x0c, 0x00,
+    0xfd, 0xbb, 0x3f, 0xac, 0xdd, 0xc7, 0xd9, 0xee, 0x83, 0xf6, 0x5c, 0xd9, 0x3c, 0xaa, 0x28, 0x7c,
+];
 
 /// Supported cipher algorithms.
 #[repr(u32)]
@@ -170,7 +180,7 @@ impl Cipher {
         match self {
             Cipher::None => Ok(Cow::from(data)),
             Cipher::Aes128Xts(cipher) => {
-                assert_eq!(key.len(), 32);
+                assert_eq!(key.len(), AES_128_XTS_KEY_LENGTH);
                 let mut buf;
                 let data = if data.len() >= DATA_UNIT_LENGTH {
                     data
@@ -179,9 +189,9 @@ impl Cipher {
                     // This pads with the same value as the number of padding bytes
                     // and append the magic padding end.
                     let val = (DATA_UNIT_LENGTH - data.len()) as u8;
-                    buf = [val; AFTER_PADDING_LENGTH];
+                    buf = [val; PADDING_LENGTH];
                     buf[..data.len()].copy_from_slice(data);
-                    buf[DATA_UNIT_LENGTH..AFTER_PADDING_LENGTH].copy_from_slice(&PADDING_MAGIC_END);
+                    buf[DATA_UNIT_LENGTH..PADDING_LENGTH].copy_from_slice(&PADDING_MAGIC_END);
                     &buf
                 };
                 Self::cipher(*cipher, symm::Mode::Encrypt, key, iv, data)
@@ -189,15 +199,15 @@ impl Cipher {
                     .map_err(|e| eother!(format!("failed to encrypt data, {}", e)))
             }
             Cipher::Aes256Xts(cipher) => {
-                assert_eq!(key.len(), 64);
+                assert_eq!(key.len(), AES_256_XTS_KEY_LENGTH);
                 let mut buf;
                 let data = if data.len() >= DATA_UNIT_LENGTH {
                     data
                 } else {
                     let val = (DATA_UNIT_LENGTH - data.len()) as u8;
-                    buf = [val; AFTER_PADDING_LENGTH];
+                    buf = [val; PADDING_LENGTH];
                     buf[..data.len()].copy_from_slice(data);
-                    buf[DATA_UNIT_LENGTH..AFTER_PADDING_LENGTH].copy_from_slice(&PADDING_MAGIC_END);
+                    buf[DATA_UNIT_LENGTH..PADDING_LENGTH].copy_from_slice(&PADDING_MAGIC_END);
                     &buf
                 };
                 Self::cipher(*cipher, symm::Mode::Encrypt, key, iv, data)
@@ -352,6 +362,53 @@ impl Cipher {
         let rest = c.finalize(&mut out[count..])?;
         out.truncate(count + rest);
         Ok(out)
+    }
+}
+
+/// Struct to provide context information for data encryption/decryption.
+#[derive(Default, Debug, Clone)]
+pub struct CipherContext {
+    key: Vec<u8>,
+    iv: Vec<u8>,
+    convergent_encryption: bool,
+}
+
+impl CipherContext {
+    /// Create a new instance of [CipherContext].
+    pub fn new(key: Vec<u8>, iv: Vec<u8>, convergent_encryption: bool) -> Result<Self, Error> {
+        if key.len() != 32 {
+            return Err(einval!("invalid key length for encryption"));
+        } else if key[0..16] == key[16..32] {
+            return Err(einval!("invalid symmetry key for encryption"));
+        }
+
+        Ok(CipherContext {
+            key,
+            iv,
+            convergent_encryption,
+        })
+    }
+
+    /// Get context information from data for encryption/decryption.
+    pub fn get_cipher_context<'a>(
+        &'a self,
+        data: &'a [u8; AES_128_XTS_KEY_LENGTH]
+    ) -> (&'a [u8], Vec<u8>) {
+        let iv = vec![0u8; 16];
+        if self.convergent_encryption {
+            if data[0..16] == data[16..32] {
+                (&DEFAULT_CE_KEY, iv)
+            } else {
+                (data, iv)
+            }
+        } else {
+            (&self.key, iv)
+        }
+    }
+
+    /// Get context information for meta data encryption/decryption.
+    pub fn get_meta_cipher_context(&self) -> (&[u8], &[u8]) {
+        (&self.key, &self.iv)
     }
 }
 

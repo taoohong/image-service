@@ -24,12 +24,11 @@ use std::time::Instant;
 
 use fuse_backend_rs::file_buf::FileVolatileSlice;
 use nydus_utils::compress::zlib_random::ZranDecoder;
-use nydus_utils::crypt::{self, Cipher, AFTER_PADDING_LENGTH, DATA_UNIT_LENGTH, PADDING_MAGIC_END};
+use nydus_utils::crypt::{self, Cipher, CipherContext, PADDING_LENGTH, DATA_UNIT_LENGTH, PADDING_MAGIC_END};
 use nydus_utils::{compress, digest};
 
 use crate::backend::{BlobBackend, BlobReader};
 use crate::cache::state::ChunkMap;
-use crate::context::CipherContext;
 use crate::device::{
     BlobChunkInfo, BlobInfo, BlobIoDesc, BlobIoRange, BlobIoVec, BlobObject, BlobPrefetchRequest,
 };
@@ -320,11 +319,11 @@ pub trait BlobCache: Send + Sync {
                 self.decrypt_chunk_data(&raw_buffer, unencryted_buffer.as_mut_slice())?;
                 // If original plaintext is less than 16 bytes（encryption data unit length),
                 // the plaintext will be padded to 16 bytes with value (16 - data.len())
-                // and ended with padding magic end ([7,8,9,0]) before being encrypted.
+                // and ended with padding magic end before being encrypted.
                 // So after decrypting the data, we have to truncate it to original size.
-                if c_size as usize == AFTER_PADDING_LENGTH
+                if c_size as usize == PADDING_LENGTH
                     && unencryted_buffer
-                        [AFTER_PADDING_LENGTH - PADDING_MAGIC_END.len()..AFTER_PADDING_LENGTH]
+                        [PADDING_LENGTH - PADDING_MAGIC_END.len()..PADDING_LENGTH]
                         == PADDING_MAGIC_END
                 {
                     let padding_value = unencryted_buffer[DATA_UNIT_LENGTH - 1] as usize;
@@ -332,8 +331,9 @@ pub trait BlobCache: Send + Sync {
                         unencryted_buffer.truncate(DATA_UNIT_LENGTH - padding_value);
                     } else {
                         return Err(eio!(format!(
-                            "failed to truncate the data after decryption, c_size {}",
+                            "failed to truncate the data after decryption, c_size {}, padding value {}",
                             c_size,
+                            padding_value,
                         )));
                     }
                 }
@@ -425,7 +425,12 @@ pub trait BlobCache: Send + Sync {
             Ok(buf2) => {
                 buffer.copy_from_slice(&buf2);
             }
-            Err(_) => return Err(eother!("failed to decrypt data from cache file")),
+            Err(e) => {
+                return Err(eother!(format!(
+                    "failed to decrypt data from cache file, {}",
+                    e
+                )))
+            }
         }
         Ok(())
     }
@@ -539,8 +544,8 @@ impl<'a, 'b> ChunkDecompressState<'a, 'b> {
             self.cache
                 .decrypt_chunk_data(&self.c_buf[offset_merged..end_merged], &mut t_buf)
                 .unwrap();
-            if c_size as usize == AFTER_PADDING_LENGTH
-                && t_buf[AFTER_PADDING_LENGTH - PADDING_MAGIC_END.len()..AFTER_PADDING_LENGTH]
+            if c_size as usize == PADDING_LENGTH
+                && t_buf[PADDING_LENGTH - PADDING_MAGIC_END.len()..PADDING_LENGTH]
                     == PADDING_MAGIC_END
             {
                 let padding_value = t_buf[DATA_UNIT_LENGTH - 1] as usize;
