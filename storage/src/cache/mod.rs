@@ -24,7 +24,7 @@ use std::time::Instant;
 
 use fuse_backend_rs::file_buf::FileVolatileSlice;
 use nydus_utils::compress::zlib_random::ZranDecoder;
-use nydus_utils::crypt::{self, Cipher, CipherContext, PADDING_LENGTH, DATA_UNIT_LENGTH, PADDING_MAGIC_END};
+use nydus_utils::crypt::{self, Cipher, CipherContext};
 use nydus_utils::{compress, digest};
 
 use crate::backend::{BlobBackend, BlobReader};
@@ -317,26 +317,6 @@ pub trait BlobCache: Send + Sync {
                 trace!("read chunk from backend, ready to decrypt, {}", c_size);
                 let mut unencryted_buffer = alloc_buf(c_size);
                 self.decrypt_chunk_data(&raw_buffer, unencryted_buffer.as_mut_slice())?;
-                // If original plaintext is less than 16 bytes（encryption data unit length),
-                // the plaintext will be padded to 16 bytes with value (16 - data.len())
-                // and ended with padding magic end before being encrypted.
-                // So after decrypting the data, we have to truncate it to original size.
-                if c_size as usize == PADDING_LENGTH
-                    && unencryted_buffer
-                        [PADDING_LENGTH - PADDING_MAGIC_END.len()..PADDING_LENGTH]
-                        == PADDING_MAGIC_END
-                {
-                    let padding_value = unencryted_buffer[DATA_UNIT_LENGTH - 1] as usize;
-                    if padding_value < DATA_UNIT_LENGTH {
-                        unencryted_buffer.truncate(DATA_UNIT_LENGTH - padding_value);
-                    } else {
-                        return Err(eio!(format!(
-                            "failed to truncate the data after decryption, c_size {}, padding value {}",
-                            c_size,
-                            padding_value,
-                        )));
-                    }
-                }
                 unencryted_buffer
             } else {
                 raw_buffer
@@ -421,7 +401,7 @@ pub trait BlobCache: Send + Sync {
             return Err(eother!("data encrypted but cipher context unsetted"));
         };
         let (key, iv) = ctx.get_meta_cipher_context();
-        match cipher_object.decrypt(&key, Some(&iv), &raw_buffer, buffer.len() as usize) {
+        match cipher_object.decrypt(&key, Some(&iv), &raw_buffer) {
             Ok(buf2) => {
                 buffer.copy_from_slice(&buf2);
             }
@@ -544,20 +524,6 @@ impl<'a, 'b> ChunkDecompressState<'a, 'b> {
             self.cache
                 .decrypt_chunk_data(&self.c_buf[offset_merged..end_merged], &mut t_buf)
                 .unwrap();
-            if c_size as usize == PADDING_LENGTH
-                && t_buf[PADDING_LENGTH - PADDING_MAGIC_END.len()..PADDING_LENGTH]
-                    == PADDING_MAGIC_END
-            {
-                let padding_value = t_buf[DATA_UNIT_LENGTH - 1] as usize;
-                if padding_value < DATA_UNIT_LENGTH {
-                    t_buf.truncate(DATA_UNIT_LENGTH - padding_value);
-                } else {
-                    return Err(einval!(format!(
-                        "failed to truncate the data after decryption, c_size {}, d_size {}",
-                        c_size, d_size,
-                    )));
-                }
-            }
             Cow::Owned(t_buf)
         } else {
             Cow::Borrowed(&self.c_buf[offset_merged..end_merged])

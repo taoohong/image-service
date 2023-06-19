@@ -192,7 +192,7 @@ impl FileCacheEntry {
             metrics.buffered_backend_size.sub(buffer.size() as u64);
             let mut t_buf;
             let buf = if !is_raw_data && is_cache_encrypted {
-                let (key, iv) = cipher_context.get_cipher_context(&chunk.chunk_id().data);
+                let (key, iv) = cipher_context.generate_cipher_context(&chunk.chunk_id().data);
                 let buf = buffer.slice();
                 t_buf = alloc_buf(round_up_usize(buf.len(), ENCRYPTION_PAGE_SIZE));
 
@@ -1296,7 +1296,7 @@ impl FileCacheEntry {
             let size = chunk.uncompressed_size() as usize;
             let cipher_object = self.cache_cipher_object.clone();
             let cipher_context = self.cache_cipher_context.clone();
-            let (key, iv) = cipher_context.get_cipher_context(&chunk.chunk_id().data);
+            let (key, iv) = cipher_context.generate_cipher_context(&chunk.chunk_id().data);
 
             let align_size = round_up_usize(size, ENCRYPTION_PAGE_SIZE);
             let mut buf = alloc_buf(align_size);
@@ -1305,12 +1305,7 @@ impl FileCacheEntry {
             let mut pos = 0;
             while pos < buffer.len() {
                 assert!(pos + ENCRYPTION_PAGE_SIZE <= buf.len());
-                match cipher_object.decrypt(
-                    key,
-                    Some(&iv),
-                    &buf[pos..pos + ENCRYPTION_PAGE_SIZE],
-                    ENCRYPTION_PAGE_SIZE,
-                ) {
+                match cipher_object.decrypt(key, Some(&iv), &buf[pos..pos + ENCRYPTION_PAGE_SIZE]) {
                     Ok(buf2) => {
                         let len = std::cmp::min(buffer.len() - pos, ENCRYPTION_PAGE_SIZE);
                         buffer[pos..pos + len].copy_from_slice(&buf2[..len]);
