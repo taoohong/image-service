@@ -36,15 +36,16 @@ type Opt struct {
 	BackendConfig    string
 	BackendForcePush bool
 
-	MergePlatform    bool
-	Docker2OCI       bool
-	FsVersion        string
-	FsAlignChunk     bool
-	Compressor       string
-	ChunkSize        string
-	BatchSize        string
-	PrefetchPatterns string
-	OCIRef           bool
+	MergePlatform     bool
+	Docker2OCI        bool
+	FsVersion         string
+	FsAlignChunk      bool
+	Compressor        string
+	ChunkSize         string
+	BatchSize         string
+	PrefetchPatterns  string
+	OCIRef            bool
+	EncryptRecipients []string
 
 	AllPlatforms bool
 	Platforms    string
